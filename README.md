@@ -1,4 +1,4 @@
-# Lunar 客户端
+﻿# Lunar 客户端
 
 [![HMCL Plugin](https://img.shields.io/badge/HMCL-plugin-blue)](https://github.com/topics/erren282s-launcher-plugins)
 [![Version](https://img.shields.io/badge/version-1.7.0-green)]()
@@ -179,4 +179,13 @@ powershell -File tools\run-test.ps1 -Class RepairLunarVersion `
 验证启动器会拒绝 Java 8 而选中 Java 21，然后**完全按生成的 json + 启动器提供的 `${classpath}`
 占位符**组装命令真实启动（不手工加 `-cp`，这样“忘了写 -cp”的回归会被测试抓住），
 等待客户端输出 `LUNARCLIENT_STATUS_STARTED`。
+---
 
+## 说明：本项目为 Vibe Coding 产物
+
+**本项目的全部代码均由 AI（大语言模型）生成**，通过对话式编程（vibe coding）完成——
+人类只提出需求、给出反馈与验收，不手写实现代码。
+
+- 代码可能包含未经验证的边界情况、不一致的风格，或与常规工程实践不同的设计取舍
+- 请在生产环境使用前自行审查、测试与评估
+- 欢迎提交 issue 或 PR 改进
