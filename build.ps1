@@ -1,4 +1,4 @@
-# 插件打包脚本（Windows）
+﻿# 插件打包脚本（Windows）
 # 用法：
 #   .\build.ps1                                    # 自动在本仓库 HMCL/build/libs 找 HMCL jar
 #   .\build.ps1 -HMCLJar C:\path\to\HMCL-3.16.4.jar

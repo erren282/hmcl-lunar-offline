@@ -4,7 +4,6 @@ import org.jackhuang.hmcl.plugin.HmclPlugin;
 import org.jackhuang.hmcl.plugin.PluginContext;
 import org.jackhuang.hmcl.plugin.PluginDownloadTab;
 import org.jackhuang.hmcl.plugin.PluginMenuService;
-import org.jackhuang.hmcl.plugin.PluginPageAction;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.util.logging.Logger;
@@ -37,23 +36,9 @@ public class LunarOfflinePlugin extends HmclPlugin {
         downloadTab = new LunarDownloadTab(dataDirectory);
         PluginMenuService.registerDownloadTab(downloadTab);
 
-        // 「Lunar 微软会话」页面：查看 accounts.json 状态、手动触发刷新
-        PluginMenuService.registerPage(new PluginPageAction() {
-            @Override
-            public String getTitle() {
-                return "Lunar 微软会话";
-            }
-
-            @Override
-            public String getDescription() {
-                return "查看/刷新 Lunar 客户端的微软账户会话（多人游戏验证）";
-            }
-
-            @Override
-            public javafx.scene.Node createPage() {
-                return new LunarSessionPage();
-            }
-        });
+        // 「Lunar 微软会话」页面不再注册到「插件页面」列表：会话查看与刷新已经由包装类和
+        // 启动前的自动同步覆盖，用户不需要（也不应该）手动进页面操作。
+        // LunarSessionPage 这个类保留着，随时可以再接回某个入口。
 
         // 「Lunar 启动修复」不再往「插件页面」列表里放入口（那个列表只留插件自己的
         // 页面）。修复能力本身没有任何删减，也不需要用户手动进页面：
