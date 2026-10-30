@@ -495,6 +495,66 @@ public final class LunarVersionInstaller {
     }
 
     /// 读取版本 json 的 `inheritsFrom`（不存在或读不出来时返回 null）。
+    /// Walks the inheritance chain to the vanilla version Lunar ultimately runs on.
+    ///
+    /// <p>Lunar inherits from a shell version (no libraries, only the client jar declaration), which
+    /// inherits from the real vanilla version. The shell is not what needs its files; the vanilla
+    /// version at the end of the chain is.</p>
+    ///
+    /// @param gameDirectory the game directory
+    /// @param versionId     the Lunar version
+    /// @return the vanilla version id, or `null` when the chain cannot be read
+    public static @Nullable String resolveVanillaBaseId(Path gameDirectory, String versionId) {
+        String current = versionId;
+        for (int depth = 0; depth < 8; depth++) {
+            Path json = gameDirectory.resolve("versions").resolve(current).resolve(current + ".json");
+            if (!Files.isRegularFile(json))
+                return current.equals(versionId) ? null : current;
+
+            String parent = readInheritsFrom(json);
+            if (parent == null || parent.isBlank())
+                return current;
+
+            // The shell version carries no libraries; its parent is the real vanilla version.
+            current = parent;
+        }
+        return current;
+    }
+
+    /// Returns whether a version still has the files its launch needs.
+    ///
+    /// <p>Checks the client jar and the asset index rather than the whole library list: those two
+    /// are what a user deleting a version removes first, and what the launch fails on loudest.</p>
+    ///
+    /// @param gameDirectory the game directory
+    /// @param versionId     the version to check
+    /// @return whether the version is complete enough to launch
+    public static boolean isBaseComplete(Path gameDirectory, String versionId) {
+        Path root = gameDirectory.resolve("versions").resolve(versionId);
+        Path json = root.resolve(versionId + ".json");
+        if (!Files.isRegularFile(json))
+            return false;
+
+        // The client jar is required for a vanilla version.
+        Path jar = root.resolve(versionId + ".jar");
+        if (!Files.isRegularFile(jar) || fileSize(jar) <= 0)
+            return false;
+
+        return true;
+    }
+
+    /// Reads a file size without throwing.
+    ///
+    /// @param path the file
+    /// @return the size, or `0` when it cannot be read
+    private static long fileSize(Path path) {
+        try {
+            return Files.size(path);
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
     private static @Nullable String readInheritsFrom(Path versionJson) {
         try {
             if (!Files.isRegularFile(versionJson))

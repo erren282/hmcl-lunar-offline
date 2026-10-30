@@ -53,6 +53,23 @@ public final class LunarInstallTask extends Task<Void> {
     /// 所以这里不编造 i18n key）。
     private static final String STAGE = "Lunar 客户端";
 
+    /// Where download progress is published, or `null` when the launcher has no download hub.
+    ///
+    /// <p>This task fetches with its own threads instead of the launcher's downloader, so the
+    /// launcher never learns these files exist and cannot list them. Publishing the same events the
+    /// built-in downloader emits is what makes the download show up in the download page.</p>
+    private static volatile @Nullable org.jackhuang.hmcl.plugin.LauncherRoot downloadReporter;
+
+    /// Sets the launcher root used to publish download progress.
+    ///
+    /// @param root the launcher root, or `null` to stop reporting
+    public static void setDownloadReporter(@Nullable org.jackhuang.hmcl.plugin.LauncherRoot root) {
+        downloadReporter = root;
+    }
+
+    /// Whether progress has been announced for the current run.
+    private boolean announced;
+
     public LunarInstallTask(Path gameDirectory, String versionId, LunarApi api,
                             String gameVersion, String moduleId, Path installation,
                             @Nullable Consumer<String> stepListener) {
@@ -69,6 +86,27 @@ public final class LunarInstallTask extends Task<Void> {
         setSignificance(Task.TaskSignificance.MAJOR);
     }
 
+    /// Publishes a download event, ignoring failures so reporting can never break an install.
+    ///
+    /// @param phase    the lifecycle point
+    /// @param received bytes transferred
+    /// @param total    total bytes, or `0`
+    private void report(org.jackhuang.hmcl.event.DownloadEvent.Phase phase,
+                        long received, long total) {
+        var reporter = downloadReporter;
+        if (reporter == null)
+            return;
+        try {
+            // The start event carries the stop action, which is how the download page's cancel
+            // button can reach this task at all.
+            reporter.reportDownload(phase, "", "Lunar " + gameVersion,
+                    installation.toString(), received, total, "Lunar " + gameVersion,
+                    this::cancel);
+        } catch (Throwable ignored) {
+            // Reporting must never break a download.
+        }
+    }
+
     /// 安装结果（任务成功结束后可读）。
     public @Nullable LunarVersionInstaller.Result result() {
         return installed.get();
@@ -82,6 +120,10 @@ public final class LunarInstallTask extends Task<Void> {
     @Override
     public void execute() throws Exception {
         try {
+            // Announce before the first byte so the row exists while the manifest is still loading.
+            report(org.jackhuang.hmcl.event.DownloadEvent.Phase.STARTED, 0, 0);
+            announced = true;
+
             LunarClientDownloader.Installed downloaded = LunarClientDownloader.download(
                     installation, api, gameVersion, moduleId,
                     this::onProgress,
@@ -102,6 +144,12 @@ public final class LunarInstallTask extends Task<Void> {
 
             step("已安装版本「" + result.versionId() + "」");
             updateProgress(1.0);
+            report(org.jackhuang.hmcl.event.DownloadEvent.Phase.FINISHED, totalBytes, totalBytes);
+        } catch (Throwable e) {
+            // Reaching the download page with a stuck "running" row is worse than showing the
+            // failure, so every exit path publishes one terminal event.
+            report(org.jackhuang.hmcl.event.DownloadEvent.Phase.FAILED, doneBytes.get(), totalBytes);
+            throw e;
         } finally {
             // 成功、失败、取消都要归零：左下角的速度不该停在某个非零值上不再变化
             speedMeter.finish();
@@ -118,6 +166,11 @@ public final class LunarInstallTask extends Task<Void> {
         // 不主动上报就永远显示 0 B/s。
         speedMeter.accept(done);
         reportProgress();
+
+        // The hub lists one row per install, so the file count is not needed here; the byte totals
+        // are what its progress bar reads.
+        if (announced)
+            report(org.jackhuang.hmcl.event.DownloadEvent.Phase.PROGRESS, done, total);
     }
 
     /// 安装（复制 jar）阶段：总量未知，用「已复制字节数 / 一个足够大的估计值」让进度条缓慢前进，

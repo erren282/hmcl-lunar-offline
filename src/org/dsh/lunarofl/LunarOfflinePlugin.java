@@ -29,6 +29,10 @@ public class LunarOfflinePlugin extends HmclPlugin {
         dataDirectory = getContext().getDataDirectory();
         getContext().logInfo("Lunar 离线客户端已启用，数据目录：" + dataDirectory);
 
+        // Let the install task publish progress to the launcher's download hub: it fetches with its
+        // own threads, so without this it never appears in the download page.
+        LunarInstallTask.setDownloadReporter(getRoot());
+
         // 下载页里的「Lunar 客户端」标签：不经过 Celestial，直接下载并一键启动
         downloadTab = new LunarDownloadTab(dataDirectory);
         PluginMenuService.registerDownloadTab(downloadTab);
@@ -194,6 +198,10 @@ public class LunarOfflinePlugin extends HmclPlugin {
             LunarRepair.Report report = LunarRepair.preflight(gameRepository.getBaseDirectory(), versionId);
             if (report != null && report.repaired())
                 getContext().logInfo("启动前自动修复：" + report.summary());
+            // A deleted vanilla base is the one failure the repair pass cannot fix: it rewrites the
+            // version json, but the game files that base provided were removed with it.
+            ensureVanillaBaseInstalled(gameRepository, versionId);
+
 
             // Windows 命令行上限 32767 字符，超了就是「CreateProcess error=206, 文件名或扩展名太长」。
             // 库一多（Lunar 自己的库 + 运行库 + 原版库）很容易撞上，所以提前提醒。
@@ -328,5 +336,70 @@ public class LunarOfflinePlugin extends HmclPlugin {
         } catch (Exception e) {
             error("打开文件失败", e.getMessage());
         }
+    }
+
+    /// Downloads the vanilla base again when its files are gone.
+    ///
+    /// <p>Lunar inherits from a shell version, which inherits from the real vanilla version. Deleting
+    /// that vanilla version takes its jar, libraries and assets with it, and the Lunar launch then
+    /// fails while everything looks intact. The base is rebuilt through the launcher's own install
+    /// task, so the files land where the launcher expects them.</p>
+    ///
+    /// Downloads the vanilla base again when its files are gone.
+    ///
+    /// <p>Lunar inherits from a shell version, which inherits from the real vanilla version. Deleting
+    /// that vanilla version takes its jar, libraries and assets with it, and the Lunar launch then
+    /// fails while everything looks intact. The base is rebuilt through the launcher's own install
+    /// task, so the files land where the launcher expects them.</p>
+    ///
+    /// @param repository the game repository
+    /// @param versionId  the Lunar version being launched
+    private void ensureVanillaBaseInstalled(
+            org.jackhuang.hmcl.game.DefaultGameRepository repository, String versionId) {
+        try {
+            Path gameDirectory = repository.getBaseDirectory();
+            String baseId = LunarVersionInstaller.resolveVanillaBaseId(gameDirectory, versionId);
+            if (baseId == null || baseId.isBlank())
+                return;
+
+            if (LunarVersionInstaller.isBaseComplete(gameDirectory, baseId))
+                return;
+
+            getContext().logWarning("Lunar 依赖的原版基座 " + baseId + " 文件缺失，正在自动补全");
+            downloadBaseAsync(baseId);
+        } catch (Throwable t) {
+            getContext().logWarning("检测原版基座失败：" + t);
+        }
+    }
+
+    /// Starts a vanilla install for a missing base, without blocking the launch.
+    ///
+    /// <p>Downloading inside `onBeforeLaunch` would stall the launch for minutes with no feedback, so
+    /// the install runs as a normal launcher task and shows up in the download page.</p>
+    ///
+    /// @param baseId the vanilla version to restore
+    private void downloadBaseAsync(String baseId) {
+        javafx.application.Platform.runLater(() -> {
+            try {
+                org.jackhuang.hmcl.game.HMCLGameRepository repository =
+                        org.jackhuang.hmcl.setting.GameDirectoryManager.getSelectedRepository();
+                org.jackhuang.hmcl.download.DefaultDependencyManager dependencyManager =
+                        repository.getDependency();
+                org.jackhuang.hmcl.download.VersionList<?> gameList =
+                        dependencyManager.getVersionList("game");
+
+                org.jackhuang.hmcl.task.Task<?> prepare = gameList.refreshAsync(baseId)
+                        .whenComplete(org.jackhuang.hmcl.task.Schedulers.javafx(), exception -> {
+                            if (exception != null) {
+                                getContext().logWarning("补全原版 " + baseId + " 失败：" + exception);
+                                return;
+                            }
+                            getContext().logInfo("已补全原版基座 " + baseId + "，请重新启动游戏");
+                        });
+                prepare.start();
+            } catch (Throwable t) {
+                getContext().logWarning("无法补全原版基座 " + baseId + "：" + t);
+            }
+        });
     }
 }
